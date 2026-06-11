@@ -26,3 +26,24 @@ php -d extension=/path/to/libinfer.so \
 ```
 
 Any purpose-built embedding GGUF works: BGE, E5, GTE, Qwen3-Embedding, …
+
+## [`semantic-search-large.php`](semantic-search-large.php) — timing + memory at corpus scale
+
+Embeds and indexes a 10,000-document synthetic corpus (configurable) and
+reports wall-clock time per phase — embedding, chunked ingestion,
+write/load, cold and warm search — plus honest memory accounting
+(process RSS at three points, theoretical index core, PHP-side peak) and
+total wall-vs-CPU time so `time`'s `user >> real` is explained by the
+output itself.
+
+```sh
+php -d extension=/path/to/libinfer.so \
+    -d extension=$(pwd)/target/debug/libturbovec.so \
+    examples/semantic-search-large.php models/bge-small-en-v1.5-q8_0.gguf [docs=1000] [k=10]
+```
+
+The headline it demonstrates: embedding is ~99% of the wall clock;
+indexing 10K vectors takes ~300 ms into a ~2 MB index, and warm searches
+run in well under a millisecond. Dimensionality follows the model
+(bge-small = 384); point it at a 1024-dim GGUF and everything scales
+accordingly.
