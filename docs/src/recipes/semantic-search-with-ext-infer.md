@@ -38,7 +38,24 @@ Two details that matter:
 
 For large corpora, batch: accumulate `Vectors::pack(...)` strings and
 ids in PHP arrays, then call `addWithIds(implode('', $packed), $ids)`
-every few thousand documents.
+every few thousand documents — packed vectors batch by plain string
+concatenation.
+
+Long documents retrieve better as chunks than as whole-file vectors.
+[`displace/ai-toolkit`](https://github.com/DisplaceTech/ai-toolkit)
+ships structure-aware chunkers that pair with this loop:
+
+```php
+use Displace\AI\Toolkit\Text\RecursiveCharacterChunker;
+
+$chunker = new RecursiveCharacterChunker(size: 2000, overlap: 200);
+
+foreach ($documents as $id => $text) {
+    foreach ($chunker->chunk($text) as $chunk) {
+        // embed $chunk, mapping your own composite id => chunk position
+    }
+}
+```
 
 ## Querying
 
@@ -73,3 +90,70 @@ echo $answer->answer();
 
 Use one model handle for embeddings and a separate one for chat — the
 embedding flag is a load-time mode in ext-infer.
+
+## Decoupling with ai-contracts
+
+Everything above names concrete classes. If your application (or a
+framework you're integrating with) should not depend on a specific
+engine, code against the
+[`displace/ai-contracts`](https://github.com/DisplaceTech/ai-contracts)
+interfaces instead and wrap the extensions in thin adapters:
+
+```php
+use Displace\AI\Contracts\Embedder;
+use Displace\AI\Contracts\VectorIndex;
+use Displace\Infer\Model;
+use Displace\Vector\IdMapIndex;
+use Displace\Vector\Vectors;
+
+final class InferEmbedder implements Embedder
+{
+    public function __construct(private readonly Model $model) {}
+
+    public function embed(string $text): string
+    {
+        return Vectors::pack($this->model->embed($text)->normalize()->vector());
+    }
+
+    public function embedBatch(array $texts): string
+    {
+        return implode('', array_map($this->embed(...), $texts));
+    }
+
+    public function dimensions(): int
+    {
+        return $this->model->embed(' ')->dimensions();
+    }
+}
+
+final class TurbovecIndex implements VectorIndex
+{
+    public function __construct(private readonly IdMapIndex $index) {}
+
+    public function add(string $vectors, array $ids): void
+    {
+        $this->index->addWithIds($vectors, $ids);
+    }
+
+    public function search(string $query, int $k = 10, ?array $allowlist = null): array
+    {
+        return iterator_to_array($this->index->search($query, $k, $allowlist));
+    }
+
+    public function remove(int $id): void
+    {
+        $this->index->remove($id);
+    }
+
+    public function count(): int
+    {
+        return $this->index->count();
+    }
+}
+```
+
+Application code then takes `Embedder $embedder, VectorIndex $index`
+and never mentions either extension — the packed-float32 buffers flow
+from `embedBatch()` straight into `add()` with no conversion in
+between. Swap in an API-backed embedder or a database-backed index
+without touching the call sites.
