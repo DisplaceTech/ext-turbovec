@@ -1,4 +1,6 @@
+# 1.89 floor (vs ext-infer's 1.88): upstream turbovec's AVX-512BW kernel
+# uses #[target_feature(enable = "avx512bw", ...)], stabilized in 1.89.
 [toolchain]
-channel    = "1.88.0"
+channel    = "1.89.0"
 components = ["rustfmt", "clippy"]
 profile    = "minimal"
