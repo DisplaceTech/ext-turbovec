@@ -12,7 +12,6 @@ A runnable version of this recipe ships in the repo as
 ```php
 use Displace\Infer\Model;
 use Displace\Vector\IdMapIndex;
-use Displace\Vector\Vectors;
 
 // Any purpose-built embedding GGUF: BGE, E5, GTE, Qwen3-Embedding, ...
 $model = Model::load('models/bge-small-en-v1.5-q8_0.gguf', ['embedding' => true]);
@@ -22,7 +21,7 @@ $index = null;
 foreach ($documents as $id => $text) {
     $embedding = $model->embed($text)->normalize();   // unit length -> cosine scores
     $index   ??= new IdMapIndex(dim: $embedding->dimensions(), bitWidth: 4);
-    $index->addWithIds(Vectors::pack($embedding->vector()), [$id]);
+    $index->addWithIds($embedding->packed(), [$id]);
 }
 
 $index->write('corpus.tvim');     // embed once, search forever
@@ -32,13 +31,15 @@ Two details that matter:
 
 - **`normalize()`** — unit-length vectors make the index's inner-product
   scores equal cosine similarity, so a perfect match reads ≈ 1.0.
-- **`Vectors::pack()`** bridges ext-infer's float array to the packed
-  contract. ext-infer's roadmap includes emitting packed float32
-  directly, which will make this line a pass-through.
+- **`packed()`** (ext-infer ≥ 0.2) emits the packed little-endian
+  float32 contract directly from the Rust side — the embedding's
+  coordinates never inflate into PHP values on their way into the
+  index. On ext-infer 0.1, bridge with
+  `Vectors::pack($embedding->vector())` instead.
 
-For large corpora, batch: accumulate `Vectors::pack(...)` strings and
-ids in PHP arrays, then call `addWithIds(implode('', $packed), $ids)`
-every few thousand documents — packed vectors batch by plain string
+For large corpora, batch: accumulate `packed()` strings and ids in PHP
+arrays, then call `addWithIds(implode('', $packed), $ids)` every few
+thousand documents — packed vectors batch by plain string
 concatenation.
 
 Long documents retrieve better as chunks than as whole-file vectors.
@@ -60,8 +61,10 @@ foreach ($documents as $id => $text) {
 ## Querying
 
 ```php
-$query  = $model->embed('how do I reset my password?')->normalize();
-$result = $index->search(Vectors::pack($query->vector()), k: 5);
+$result = $index->search(
+    $model->embed('how do I reset my password?')->normalize()->packed(),
+    k: 5,
+);
 
 foreach ($result as $row) {
     printf("%.3f  %s\n", $row['score'], $documents[$row['id']]);
@@ -104,7 +107,6 @@ use Displace\AI\Contracts\Embedder;
 use Displace\AI\Contracts\VectorIndex;
 use Displace\Infer\Model;
 use Displace\Vector\IdMapIndex;
-use Displace\Vector\Vectors;
 
 final class InferEmbedder implements Embedder
 {
@@ -112,7 +114,7 @@ final class InferEmbedder implements Embedder
 
     public function embed(string $text): string
     {
-        return Vectors::pack($this->model->embed($text)->normalize()->vector());
+        return $this->model->embed($text)->normalize()->packed();
     }
 
     public function embedBatch(array $texts): string
