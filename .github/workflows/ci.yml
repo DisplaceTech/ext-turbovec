@@ -1,0 +1,115 @@
+name: CI
+
+# Dramatically simpler than ext-infer's CI: no model downloads, no cmake,
+# no llama.cpp compile. Tests run against deterministic synthetic vectors
+# in milliseconds. The only system deps are libclang (ext-php-rs bindgen)
+# and, on Linux, OpenBLAS (upstream turbovec links it; macOS uses the
+# always-present Accelerate framework).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  # NOTE: setting RUSTFLAGS replaces .cargo/config.toml's rustflags, which
+  # drops the x86-64-v3 target-cpu flag here. That's fine for CI — the
+  # SIMD kernels are runtime-dispatched and results are identical; only
+  # non-kernel codegen loses vectorization. release.yml re-asserts the
+  # flag for shipped binaries.
+  RUSTFLAGS: -D warnings
+  # Opt every JavaScript-based action into the Node 24 runtime ahead of
+  # GitHub's June 2026 forced cut-over (same note as ext-infer).
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  lint:
+    name: rustfmt + clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev libopenblas-dev
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: none
+          coverage: none
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - run: cargo fmt --all --check
+      - run: cargo clippy --all-targets -- -D warnings
+
+  test:
+    name: test (PHP ${{ matrix.php }} / ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]   # macos-14 is the arm64 runner
+        # 8.5 is the current stable; 8.4 is the most-deployed; 8.3 is
+        # security-only through end of 2026 but still widely installed.
+        php: ['8.3', '8.4', '8.5']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev libopenblas-dev
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          tools: none
+          coverage: none
+
+      - name: Fetch run-tests.php
+        run: |
+          PHP_VERSION=$(php -r 'echo PHP_VERSION;')
+          curl -sSL "https://raw.githubusercontent.com/php/php-src/PHP-${PHP_VERSION%.*}/run-tests.php" -o run-tests.php
+          test -s run-tests.php
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # `ext-php-rs` generates PHP-version-specific FFI bindings during its
+      # build script — those bindings are baked into the cached `target/`
+      # tree, so the cache key must include the matrix PHP version (same
+      # failure mode ext-infer hit: an 8.3-primed cache poisons 8.4 legs).
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: php-${{ matrix.php }}
+
+      - name: Build
+        run: cargo build --verbose
+
+      - name: Sanity-load the extension
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then SUFFIX=dylib; else SUFFIX=so; fi
+          EXT="$PWD/target/debug/libturbovec.$SUFFIX"
+          test -f "$EXT"
+          php -d extension="$EXT" -r 'if (!extension_loaded("turbovec")) { fwrite(STDERR, "turbovec not loaded\n"); exit(1); } echo "ok\n";'
+
+      - name: Run PHPT tests
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then SUFFIX=dylib; else SUFFIX=so; fi
+          EXT="$PWD/target/debug/libturbovec.$SUFFIX"
+          # `run-tests.php` parses TEST_PHP_ARGS by splitting on single spaces,
+          # so the ini override must be `-d extension=...` (with the space).
+          TEST_PHP_EXECUTABLE=$(which php) \
+          TEST_PHP_ARGS="-d extension=$EXT" \
+            php run-tests.php -q --show-diff tests/phpt

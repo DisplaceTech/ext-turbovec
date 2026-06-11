@@ -1,0 +1,204 @@
+name: Release
+
+# Triggered when a tag matching `v*` is pushed (e.g. `v0.1.0`). For each
+# supported platform × PHP-minor combination, we build a release-mode
+# extension, package it with PIE's expected filename convention, and
+# upload the artifact to the GitHub Release that the tag created.
+#
+# Filename convention (verified against PIE 1.4.5, inherited from
+# ext-infer's v0.1.0 cut where each gotcha was learned the hard way):
+#
+#     php_{name}-{version}_php{minor}-{arch}-{os}-{libc}-{tsmode}.tgz
+#
+# Notably:
+#   - {version} keeps the leading `v` from the tag (PIE looks for `v0.1.0`).
+#   - {libc} is mandatory even on darwin (`bsdlibc`); Linux is `glibc`.
+#   - {tsmode} is explicit (`-nts` here, `-zts` when we add ZTS).
+#   - Extension is `.tgz`, not `.tar.gz`.
+#   - The in-archive file is `turbovec.so` on EVERY platform — PIE doesn't
+#     know about `.dylib`, and PHP's dlopen doesn't care about the suffix.
+#
+# Platform note: Linux artifacts dynamically link libopenblas.so.0
+# (upstream turbovec's BLAS dependency) — users need the libopenblas0
+# package at runtime. Keep that caveat in the release notes.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write    # uploads the release artifacts
+
+env:
+  CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  build:
+    name: build ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macos-arm64. PIE wants `bsdlibc` in the libc slot for darwin.
+          - label: 'php8.3-arm64-darwin'
+            runner: macos-14
+            php: '8.3'
+            arch: 'arm64'
+            os: 'darwin'
+            libc: 'bsdlibc'
+          - label: 'php8.4-arm64-darwin'
+            runner: macos-14
+            php: '8.4'
+            arch: 'arm64'
+            os: 'darwin'
+            libc: 'bsdlibc'
+          - label: 'php8.5-arm64-darwin'
+            runner: macos-14
+            php: '8.5'
+            arch: 'arm64'
+            os: 'darwin'
+            libc: 'bsdlibc'
+          # linux-x86_64
+          - label: 'php8.3-x86_64-linux-glibc'
+            runner: ubuntu-latest
+            php: '8.3'
+            arch: 'x86_64'
+            os: 'linux'
+            libc: 'glibc'
+          - label: 'php8.4-x86_64-linux-glibc'
+            runner: ubuntu-latest
+            php: '8.4'
+            arch: 'x86_64'
+            os: 'linux'
+            libc: 'glibc'
+          - label: 'php8.5-x86_64-linux-glibc'
+            runner: ubuntu-latest
+            php: '8.5'
+            arch: 'x86_64'
+            os: 'linux'
+            libc: 'glibc'
+          # linux-arm64
+          - label: 'php8.3-arm64-linux-glibc'
+            runner: ubuntu-24.04-arm
+            php: '8.3'
+            arch: 'arm64'
+            os: 'linux'
+            libc: 'glibc'
+          - label: 'php8.4-arm64-linux-glibc'
+            runner: ubuntu-24.04-arm
+            php: '8.4'
+            arch: 'arm64'
+            os: 'linux'
+            libc: 'glibc'
+          - label: 'php8.5-arm64-linux-glibc'
+            runner: ubuntu-24.04-arm
+            php: '8.5'
+            arch: 'arm64'
+            os: 'linux'
+            libc: 'glibc'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev libopenblas-dev
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          tools: none
+          coverage: none
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Same per-PHP scoping as ci.yml — ext-php-rs bindings are
+          # PHP-version-specific and the default cache key doesn't include
+          # the matrix.
+          key: release-php-${{ matrix.php }}-${{ matrix.arch }}
+
+      - name: Build release (x86_64)
+        if: matrix.arch == 'x86_64'
+        # Setting RUSTFLAGS clobbers .cargo/config.toml's rustflags, so the
+        # x86-64-v3 target-cpu flag must be re-asserted here — shipped
+        # x86_64 binaries should keep AVX2/FMA codegen in the non-kernel
+        # paths (the SIMD kernels themselves are runtime-dispatched and
+        # unaffected either way).
+        env:
+          RUSTFLAGS: -D warnings -C target-cpu=x86-64-v3
+        run: cargo build --release
+
+      - name: Build release (arm64)
+        if: matrix.arch != 'x86_64'
+        env:
+          RUSTFLAGS: -D warnings
+        run: cargo build --release
+
+      - name: Stage artifact
+        id: stage
+        shell: bash
+        env:
+          ARCH: ${{ matrix.arch }}
+          OS: ${{ matrix.os }}
+          LIBC: ${{ matrix.libc }}
+          PHP_MINOR: ${{ matrix.php }}
+        run: |
+          set -euo pipefail
+          version="$GITHUB_REF_NAME"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          # Cargo names the cdylib per host convention; PIE looks for
+          # `{extension-name}.so` inside the archive on every platform.
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            src="$PWD/target/release/libturbovec.dylib"
+          else
+            src="$PWD/target/release/libturbovec.so"
+          fi
+          test -f "$src" || { echo "missing $src"; exit 1; }
+
+          stage="$RUNNER_TEMP/stage"
+          mkdir -p "$stage"
+          cp "$src" "$stage/turbovec.so"
+
+          archive="php_turbovec-${version}_php${PHP_MINOR}-${ARCH}-${OS}-${LIBC}-nts.tgz"
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+
+          # tar from inside the staging dir so the archive doesn't carry a
+          # nested directory prefix — PIE expects the loadable at the root.
+          tar -C "$stage" -czf "$RUNNER_TEMP/$archive" "turbovec.so"
+          echo "path=$RUNNER_TEMP/$archive" >> "$GITHUB_OUTPUT"
+
+          # SHA-256 sidecar for downstream supply-chain verification.
+          if command -v sha256sum >/dev/null 2>&1; then
+            (cd "$RUNNER_TEMP" && sha256sum "$archive" > "$archive.sha256")
+          else
+            (cd "$RUNNER_TEMP" && shasum -a 256 "$archive" > "$archive.sha256")
+          fi
+
+      - name: Smoke-test the staged artifact
+        shell: bash
+        run: |
+          php -d extension="$RUNNER_TEMP/stage/turbovec.so" -r '
+            if (!extension_loaded("turbovec")) { fwrite(STDERR, "not loaded\n"); exit(1); }
+            $i = new Displace\Vector\TurboQuantIndex(8);
+            $i->add(pack("g*", 1,0,0,0,0,0,0,0));
+            exit($i->search(pack("g*", 1,0,0,0,0,0,0,0), 1)->ids()[0] === 0 ? 0 : 1);
+          '
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # One matrix leg creates the draft release, the rest reuse it.
+          # `draft: true` keeps it out of the public feed until a
+          # maintainer reviews and clicks "Publish".
+          draft: true
+          files: |
+            ${{ runner.temp }}/${{ steps.stage.outputs.archive }}
+            ${{ runner.temp }}/${{ steps.stage.outputs.archive }}.sha256
+          fail_on_unmatched_files: true
