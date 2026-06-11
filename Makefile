@@ -42,9 +42,16 @@ fmt-check:
 # Run the PHPT suite against the just-built shared object. `cargo test`
 # would only exercise Rust unit tests; for end-to-end coverage we load
 # the extension into a real PHP and run the upstream PHP test harness.
-# Override RUN_TESTS_PHP to point at a run-tests.php from your PHP source
-# build (it isn't bundled with most binary distributions).
+# `run-tests.php` isn't bundled with most binary PHP distributions, so when
+# it's missing we fetch the copy matching the local PHP minor from php-src.
+# Override RUN_TESTS_PHP to point at your own (e.g. from a source build).
 RUN_TESTS_PHP ?= run-tests.php
+
+$(RUN_TESTS_PHP):
+	@PHP_BRANCH=PHP-$$($(PHP) -r 'echo PHP_MAJOR_VERSION, ".", PHP_MINOR_VERSION;'); \
+	echo "fetching run-tests.php from php-src branch $$PHP_BRANCH"; \
+	curl -fsSL "https://raw.githubusercontent.com/php/php-src/$$PHP_BRANCH/run-tests.php" -o $(RUN_TESTS_PHP)
+	@test -s $(RUN_TESTS_PHP)
 
 # Cargo names the cdylib per host convention: `.dylib` on macOS, `.so`
 # everywhere else we support. (`php-config --extension-suffix` is unreliable
@@ -57,7 +64,7 @@ EXT_SUFFIX    := so
 endif
 EXT_PATH      := $(CURDIR)/target/debug/libturbovec.$(EXT_SUFFIX)
 
-test: build
+test: build $(RUN_TESTS_PHP)
 	@test -f "$(EXT_PATH)" || { echo "missing $(EXT_PATH) — run 'make build'"; exit 1; }
 	$(PHP) -d extension=$(EXT_PATH) \
 		-r 'if (!extension_loaded("turbovec")) { fwrite(STDERR, "turbovec not loaded\n"); exit(1); }'

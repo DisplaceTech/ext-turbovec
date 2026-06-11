@@ -6,17 +6,15 @@ see Rust, and the things worth testing here (zval conversions,
 exception classes, interface wiring) only exist inside a real PHP.
 
 ```sh
-# One-time: fetch the harness matching your PHP (it isn't bundled
-# with binary PHP distributions).
-PHP_BRANCH=PHP-$(php -r 'echo PHP_MAJOR_VERSION,".",PHP_MINOR_VERSION;')
-curl -sSL "https://raw.githubusercontent.com/php/php-src/${PHP_BRANCH}/run-tests.php" -o run-tests.php
-
 make test
 ```
 
-`make test` builds, sanity-loads the extension, and runs the suite.
-Failures leave `.diff`/`.out` artifacts next to the `.phpt` files
-(gitignored).
+That builds, sanity-loads the extension, and runs the suite. The
+harness itself (`run-tests.php`) isn't bundled with binary PHP
+distributions, so the first run fetches the copy matching your PHP
+minor from php-src (set `RUN_TESTS_PHP=/path/to/run-tests.php` to use
+your own). Failures leave `.diff`/`.out` artifacts next to the `.phpt`
+files (gitignored).
 
 ## Suite conventions
 
