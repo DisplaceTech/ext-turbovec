@@ -1,0 +1,34 @@
+# Settings that can't be expressed from build.rs.
+#
+# The dynamic-lookup link flag PHP extensions need at link time is emitted
+# by build.rs via `cargo:rustc-cdylib-link-arg=...`, which (unlike the
+# `rustflags` arrays here) survives a caller setting `RUSTFLAGS` in the
+# environment. See build.rs for the rationale and the CI failure mode that
+# forced this split (inherited from ext-infer).
+#
+# Both rustflags sections below ARE clobbered whenever `RUSTFLAGS` is set in
+# the environment (cargo precedence: env var > config). That's acceptable:
+#
+#  - target-cpu=x86-64-v3 is a performance flag, never a correctness flag.
+#    Upstream turbovec runtime-dispatches its AVX2/AVX-512BW kernels via
+#    `is_x86_feature_detected!` and carries a scalar fallback, so a build
+#    without the flag still runs (and still uses the SIMD kernels) — only
+#    the non-kernel code paths (rotation loops, LUT build, heap update)
+#    lose vectorization. The release workflow re-asserts the flag inside
+#    RUSTFLAGS on its x86_64 legs so shipped binaries keep it.
+#
+#  - Consumers targeting musl with `RUSTFLAGS` set must include
+#    `-C target-feature=-crt-static` themselves.
+
+# Replicates upstream turbovec's own .cargo/config.toml: x86-64-v3 is the
+# Haswell/Excavator feature floor (AVX2, FMA, BMI2, ...) — ubiquitous since
+# 2013 and the minimum for turbovec's AVX2 kernel anyway. NOT x86-64-v4:
+# the AVX-512 kernel is runtime-dispatched, and raising the baseline would
+# SIGILL the whole extension on CPUs the AVX2 path serves fine.
+[target.'cfg(target_arch = "x86_64")']
+rustflags = ["-C", "target-cpu=x86-64-v3"]
+
+# musl cdylibs cannot statically link the C runtime — they must resolve
+# libc against the host (PHP, the FPM worker, ...) at load time.
+[target.'cfg(target_env = "musl")']
+rustflags = ["-C", "target-feature=-crt-static"]
