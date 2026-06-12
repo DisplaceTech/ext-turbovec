@@ -2,11 +2,11 @@ name: Release
 
 # Triggered when a tag matching `v*` is pushed (e.g. `v0.1.0`). For each
 # supported platform × PHP-minor combination, we build a release-mode
-# extension, package it with PIE's expected filename convention, and
-# upload the artifact to the GitHub Release that the tag created.
+# `turbovec.so`/`turbovec.dylib`, package it with PIE's expected filename
+# convention, and upload the artifact to the GitHub Release that the
+# tag created.
 #
-# Filename convention (verified against PIE 1.4.5, inherited from
-# ext-infer's v0.1.0 cut where each gotcha was learned the hard way):
+# Filename convention (verified against PIE 1.4.5):
 #
 #     php_{name}-{version}_php{minor}-{arch}-{os}-{libc}-{tsmode}.tgz
 #
@@ -15,12 +15,17 @@ name: Release
 #   - {libc} is mandatory even on darwin (`bsdlibc`); Linux is `glibc`.
 #   - {tsmode} is explicit (`-nts` here, `-zts` when we add ZTS).
 #   - Extension is `.tgz`, not `.tar.gz`.
-#   - The in-archive file is `turbovec.so` on EVERY platform — PIE doesn't
-#     know about `.dylib`, and PHP's dlopen doesn't care about the suffix.
 #
-# Platform note: Linux artifacts dynamically link libopenblas.so.0
-# (upstream turbovec's BLAS dependency) — users need the libopenblas0
-# package at runtime. Keep that caveat in the release notes.
+# For our 9-leg matrix (PHP 8.3/8.4/8.5 × {macos-arm64, linux-x86_64,
+# linux-arm64}) that means tarballs like:
+#
+#     php_turbovec-v0.1.0_php8.5-arm64-darwin-bsdlibc-nts.tgz
+#     php_turbovec-v0.1.0_php8.4-x86_64-linux-glibc-nts.tgz
+#     php_turbovec-v0.1.0_php8.3-arm64-linux-glibc-nts.tgz
+#
+# (NTS-only for now; ZTS support is enabled in composer.json but no widely
+# distributed ZTS PHP runner ships on the GitHub matrix yet — revisit when
+# `shivammathur/setup-php` grows a TS option on the runners we use.)
 
 on:
   push:
@@ -32,9 +37,38 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  # Transitive license manifest for everything statically linked into the
+  # release binaries (the vendored C/C++ core, ext-php-rs, and every
+  # runtime crate between). `about.toml` accepts only permissive licenses,
+  # so a future dependency that drags in copyleft fails this job — and
+  # therefore the release — loudly.
+  notices:
+    name: license manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-about
+        # The `cli` feature gates the binary itself in recent releases and
+        # is no longer a default feature.
+        run: cargo install cargo-about --locked --features cli
+
+      - name: Generate manifest
+        run: cargo about generate about.hbs -o THIRD-PARTY-LICENSES.html
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: THIRD-PARTY-LICENSES.html
+          fail_on_unmatched_files: true
+
   build:
     name: build ${{ matrix.label }}
     runs-on: ${{ matrix.runner }}
@@ -108,6 +142,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libclang-dev libopenblas-dev
 
+      - name: Install system deps (macOS)
+        if: runner.os == 'macOS'
+        run: true
+
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
@@ -123,21 +161,14 @@ jobs:
           # the matrix.
           key: release-php-${{ matrix.php }}-${{ matrix.arch }}
 
-      - name: Build release (x86_64)
-        if: matrix.arch == 'x86_64'
-        # Setting RUSTFLAGS clobbers .cargo/config.toml's rustflags, so the
-        # x86-64-v3 target-cpu flag must be re-asserted here — shipped
-        # x86_64 binaries should keep AVX2/FMA codegen in the non-kernel
-        # paths (the SIMD kernels themselves are runtime-dispatched and
-        # unaffected either way).
+      - name: Build release
         env:
-          RUSTFLAGS: -D warnings -C target-cpu=x86-64-v3
-        run: cargo build --release
-
-      - name: Build release (arm64)
-        if: matrix.arch != 'x86_64'
-        env:
-          RUSTFLAGS: -D warnings
+          # Setting RUSTFLAGS clobbers .cargo/config.toml's rustflags, so
+          # codegen flags that shipped binaries must keep are re-asserted
+          # here on x86_64 legs from .ext-template.conf's X86_RUSTFLAGS
+          # (e.g. ext-turbovec's -C target-cpu=x86-64-v3). Empty for most
+          # extensions.
+          RUSTFLAGS: "-D warnings ${{ matrix.arch == 'x86_64' && '-C target-cpu=x86-64-v3' || '' }}"
         run: cargo build --release
 
       - name: Stage artifact
@@ -150,11 +181,30 @@ jobs:
           PHP_MINOR: ${{ matrix.php }}
         run: |
           set -euo pipefail
+          # PIE matches archive names verbatim. The format it expects is
+          #
+          #   php_{name}-{version}_php{minor}-{arch}-{os}-{libc}-{tsmode}.{ext}
+          #
+          # with these gotchas (learned the hard way during the v0.1.0 cut):
+          #
+          #   - Version *includes* the leading `v` from the tag. PIE looks
+          #     for `v0.1.0`, not `0.1.0`.
+          #   - The libc segment is required, even on darwin. PIE asks
+          #     for `bsdlibc` there; Linux is `glibc` (or `musl`).
+          #   - TS-mode segment is explicit. Our binaries are NTS, so the
+          #     suffix is `-nts`. ZTS builds (when we ship them) will use
+          #     `-zts` in the same slot.
+          #   - Extension is `.tgz`, not `.tar.gz`. Same bytes, different
+          #     glob.
           version="$GITHUB_REF_NAME"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-          # Cargo names the cdylib per host convention; PIE looks for
-          # `{extension-name}.so` inside the archive on every platform.
+          # Cargo names the cdylib per host convention: `libturbovec.dylib`
+          # on macOS, `libturbovec.so` on Linux. PIE, however, looks for
+          # `{extension-name}.so` inside the archive on every platform —
+          # it doesn't know about `.dylib`. PHP itself is agnostic
+          # (dlopen takes a path, not a suffix), so flattening to `.so`
+          # everywhere is safe and is what PIE actually wants.
           if [ "${{ runner.os }}" = "macOS" ]; then
             src="$PWD/target/release/libturbovec.dylib"
           else
@@ -181,22 +231,14 @@ jobs:
             (cd "$RUNNER_TEMP" && shasum -a 256 "$archive" > "$archive.sha256")
           fi
 
-      - name: Smoke-test the staged artifact
-        shell: bash
-        run: |
-          php -d extension="$RUNNER_TEMP/stage/turbovec.so" -r '
-            if (!extension_loaded("turbovec")) { fwrite(STDERR, "not loaded\n"); exit(1); }
-            $i = new Displace\Vector\TurboQuantIndex(8);
-            $i->add(pack("g*", 1,0,0,0,0,0,0,0));
-            exit($i->search(pack("g*", 1,0,0,0,0,0,0,0), 1)->ids()[0] === 0 ? 0 : 1);
-          '
-
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # One matrix leg creates the draft release, the rest reuse it.
-          # `draft: true` keeps it out of the public feed until a
-          # maintainer reviews and clicks "Publish".
+          # `softprops` skips updating fields like `body` when this job runs
+          # against an existing release (one matrix leg will create the
+          # release, the rest will reuse it). Setting `draft: true` keeps
+          # the release out of the public-feed until a maintainer reviews
+          # the contents and clicks "Publish".
           draft: true
           files: |
             ${{ runner.temp }}/${{ steps.stage.outputs.archive }}

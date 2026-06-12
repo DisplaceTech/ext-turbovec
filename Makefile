@@ -4,6 +4,9 @@
 CARGO       ?= cargo
 PHP         ?= php
 PHP_CONFIG  ?= php-config
+FEATURES    ?=
+
+CARGO_FLAGS := $(if $(FEATURES),--features $(FEATURES),)
 
 .PHONY: help build release test clippy fmt fmt-check stubs install uninstall clean check-cargo-php
 
@@ -21,17 +24,17 @@ help:
 	@echo "  make uninstall   cargo php remove"
 	@echo "  make clean       cargo clean"
 	@echo ""
-	@echo "Linux note: building needs libopenblas-dev (upstream turbovec links"
-	@echo "OpenBLAS); macOS uses the always-present Accelerate framework."
+	@echo "Build deps (Linux): libclang-dev libopenblas-dev"
+	@echo "Variables: FEATURES=...  -> passed through to cargo --features"
 
 build:
-	$(CARGO) build
+	$(CARGO) build $(CARGO_FLAGS)
 
 release:
-	$(CARGO) build --release
+	$(CARGO) build --release $(CARGO_FLAGS)
 
 clippy:
-	$(CARGO) clippy --all-targets -- -D warnings
+	$(CARGO) clippy --all-targets $(CARGO_FLAGS) -- -D warnings
 
 fmt:
 	$(CARGO) fmt
@@ -66,21 +69,25 @@ EXT_PATH      := $(CURDIR)/target/debug/libturbovec.$(EXT_SUFFIX)
 
 test: build $(RUN_TESTS_PHP)
 	@test -f "$(EXT_PATH)" || { echo "missing $(EXT_PATH) — run 'make build'"; exit 1; }
-	$(PHP) -d extension=$(EXT_PATH) \
+	$(PHP) -n -d extension=$(EXT_PATH) \
 		-r 'if (!extension_loaded("turbovec")) { fwrite(STDERR, "turbovec not loaded\n"); exit(1); }'
 	@# `run-tests.php` requires TEST_PHP_EXECUTABLE to be an *absolute* path
 	@# (it `file_exists()`-checks it), and parses TEST_PHP_ARGS by splitting
 	@# on single spaces — so the ini override must be `-d extension=path`,
 	@# not `-dextension=path`.
+	@# `-n` skips the system php.ini: a PIE-installed copy of this very
+	@# extension would otherwise double-load and fail every test with a
+	@# "module already loaded" warning. PHPTs may only rely on always-in
+	@# extensions (core, SPL, json) as a result.
 	TEST_PHP_EXECUTABLE=$$(command -v $(PHP)) \
-	TEST_PHP_ARGS="-d extension=$(EXT_PATH)" \
+	TEST_PHP_ARGS="-n -d extension=$(EXT_PATH)" \
 		$(PHP) $(RUN_TESTS_PHP) -q --show-diff tests/phpt
 
 stubs: check-cargo-php build
 	$(CARGO) php stubs --stubs stubs/vector.stubs.php
 
 install: check-cargo-php
-	$(CARGO) php install --release
+	$(CARGO) php install --release $(CARGO_FLAGS)
 
 uninstall: check-cargo-php
 	$(CARGO) php remove

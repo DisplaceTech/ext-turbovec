@@ -1,11 +1,5 @@
 name: CI
 
-# Dramatically simpler than ext-infer's CI: no model downloads, no cmake,
-# no llama.cpp compile. Tests run against deterministic synthetic vectors
-# in milliseconds. The only system deps are libclang (ext-php-rs bindgen)
-# and, on Linux, OpenBLAS (upstream turbovec links it; macOS uses the
-# always-present Accelerate framework).
-
 on:
   push:
     branches: [main]
@@ -13,14 +7,17 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  # NOTE: setting RUSTFLAGS replaces .cargo/config.toml's rustflags, which
-  # drops the x86-64-v3 target-cpu flag here. That's fine for CI — the
-  # SIMD kernels are runtime-dispatched and results are identical; only
-  # non-kernel codegen loses vectorization. release.yml re-asserts the
-  # flag for shipped binaries.
+  # NOTE: setting RUSTFLAGS replaces .cargo/config.toml's rustflags arrays.
+  # Acceptable in CI (correctness never depends on per-repo codegen flags);
+  # release.yml re-asserts any shipped-binary flags via X86_RUSTFLAGS in
+  # .ext-template.conf.
   RUSTFLAGS: -D warnings
   # Opt every JavaScript-based action into the Node 24 runtime ahead of
-  # GitHub's June 2026 forced cut-over (same note as ext-infer).
+  # GitHub's June 2026 forced cut-over. `actions/checkout@v4` and the
+  # rust-toolchain / setup-php / rust-cache actions all still ship Node
+  # 20 bundles; without this, each run emits a "Node.js 20 actions are
+  # deprecated" warning per leg. Once the upstream actions ship Node-24
+  # bundles natively, this line can drop.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
@@ -70,6 +67,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libclang-dev libopenblas-dev
 
+      - name: Install system deps (macOS)
+        if: runner.os == 'macOS'
+        # `true` when the extension needs nothing beyond Xcode CLT.
+        run: true
+
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
@@ -86,8 +88,10 @@ jobs:
 
       # `ext-php-rs` generates PHP-version-specific FFI bindings during its
       # build script — those bindings are baked into the cached `target/`
-      # tree, so the cache key must include the matrix PHP version (same
-      # failure mode ext-infer hit: an 8.3-primed cache poisons 8.4 legs).
+      # tree. The default rust-cache key doesn't include the matrix PHP
+      # version, so without this scoping the PHP 8.3 leg primes the cache
+      # and the PHP 8.4 leg restores PHP-8.3-bound artifacts, which then
+      # fail to load into a PHP 8.4 process at runtime.
       - uses: Swatinem/rust-cache@v2
         with:
           key: php-${{ matrix.php }}

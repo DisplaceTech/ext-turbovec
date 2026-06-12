@@ -5,7 +5,7 @@ name: Docs
 #
 # One-time setup outside of this workflow:
 #
-#   1. DNS — `turbovec` CNAME to `displacetech.github.io.` at the
+#   1. DNS — the turbovec.displace.tech CNAME to `displacetech.github.io.` at the
 #      registrar (Cloudflare in our case).
 #   2. Repo settings → Pages → Source: GitHub Actions.
 #   3. Repo settings → Pages → Custom domain: turbovec.displace.tech.
@@ -38,7 +38,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Pin mdbook so docs builds are reproducible across runs.
+  # Pin mdbook so docs builds are reproducible across runs. Bump the
+  # version here (and re-check the release page for the right tarball
+  # naming) when mdbook ships a feature we want.
   MDBOOK_VERSION: '0.5.3'
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
@@ -53,6 +55,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$HOME/.local/bin"
+          # Pre-built mdbook tarball — faster than `cargo install` and
+          # doesn't need a Rust toolchain on the runner.
           curl -fsSL \
             "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
             | tar -xz -C "$HOME/.local/bin"
@@ -63,11 +67,14 @@ jobs:
 
       - name: Inject CNAME
         # GitHub Pages reads CNAME from the deployed artifact root.
+        # Re-injecting on every deploy means the custom domain config
+        # survives Pages-settings resets and Pages-source migrations.
         run: echo 'turbovec.displace.tech' > docs/book/CNAME
 
       - name: Inject .nojekyll
-        # mdbook output paths include underscores; GitHub Pages' default
-        # Jekyll processing would refuse to serve them.
+        # mdbook output paths include underscores (e.g. internal
+        # `_FontAwesome/` for icons); GitHub Pages' default Jekyll
+        # processing would refuse to serve them. .nojekyll opts out.
         run: touch docs/book/.nojekyll
 
       - uses: actions/configure-pages@v5

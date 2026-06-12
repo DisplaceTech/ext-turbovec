@@ -4,21 +4,15 @@
 //! symbols (`zend_throw_exception`, `zval_ptr_dtor`, `spl_ce_RuntimeException`,
 //! ...) to runtime resolution against the host PHP binary.
 //!
-//! `.cargo/config.toml` carries related flags, but its `rustflags` arrays
-//! are silently replaced when a `RUSTFLAGS` environment variable is set
+//! `.cargo/config.toml` carries the same flags, but its `rustflags` array
+//! is silently replaced when a `RUSTFLAGS` environment variable is set
 //! (cargo precedence: env var > config). Our CI sets `RUSTFLAGS=-D warnings`
-//! globally, which would clobber a config-file link flag and break the macOS
-//! build at link time with "Undefined symbols: _spl_ce_RuntimeException, ...".
+//! globally, which would clobber the link flag and break the macOS build
+//! at link time with "Undefined symbols: _spl_ce_RuntimeException, ...".
 //!
 //! `cargo:rustc-cdylib-link-arg=` is a *separate* mechanism that always
 //! applies — it doesn't go through `rustflags` — so emitting from build.rs
 //! is robust regardless of how the consumer's environment is configured.
-//! (Pattern inherited verbatim from ext-infer, where the failure mode was
-//! first hit.)
-//!
-//! Note that the BLAS link directives this extension also needs on Linux
-//! (`-lopenblas`) and macOS (`-framework Accelerate`) are emitted by the
-//! upstream `turbovec` crate's own build script — nothing to do here.
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
