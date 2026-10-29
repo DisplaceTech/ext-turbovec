@@ -5,6 +5,23 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/)
 (pre-1.0: breaking changes bump the minor). Dates are tag dates.
 
+## [0.2.1] - 2026-10-29
+
+### Fixed
+
+- **Stubs match the extension exactly.** They declared `final` on
+  SearchResult, SearchResultIterator and Vectors, which the runtime doesn't make final; `array $options = []`
+  where the runtime has `?array $options = null`; and they omitted the
+  constructors the runtime registers (the exception classes can't be
+  constructed from PHP). Now enforced in CI on every leg
+  (`make stubs-check` locally). No PHP-visible change: the extension
+  behaves exactly as before; only IDE / static-analysis users see the
+  corrected signatures.
+
+### Changed
+
+- CI: GitHub Actions on their Node 24 majors (Dependabot).
+
 ## [0.2.0] - 2026-10-29
 
 Upstream `turbovec` 0.9.0 → 1.1.2: half the memory, roughly 3× faster
@@ -73,5 +90,6 @@ First release.
 - 11-test PHPT suite on synthetic vectors, examples, and docs at
   turbovec.displace.tech. `turbovec` pinned at `=0.9.0` (format v3).
 
+[0.2.1]: https://github.com/DisplaceTech/ext-turbovec/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/DisplaceTech/ext-turbovec/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/DisplaceTech/ext-turbovec/releases/tag/v0.1.0
