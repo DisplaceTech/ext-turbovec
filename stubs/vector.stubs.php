@@ -4,7 +4,7 @@
 //
 // Regenerate from the registered classes after building:
 //
-//     make stubs   # wraps `cargo php stubs --stubs stubs/vector.stubs.php`
+//     make stubs   # writes target/vector.stubs.php — diff it against this file
 
 namespace Displace\Vector;
 

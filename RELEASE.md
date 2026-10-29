@@ -71,8 +71,10 @@ make test
 # composer.json shape
 composer validate composer.json
 
-# Optional: regenerate IDE stubs and diff against the committed copy
-make stubs && git diff stubs/vector.stubs.php
+# Signature check: generate stubs from the build and diff against the
+# curated copy (Linux: add STUBS_PRELOAD=/path/to/libphp8.x.so — see the
+# Makefile). Any signature drift is a stop-and-decide.
+make stubs && diff -u stubs/vector.stubs.php target/vector.stubs.php
 ```
 
 PHPTs must pass on macOS arm64 locally before any release tag — that's
