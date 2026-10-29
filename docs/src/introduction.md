@@ -33,3 +33,13 @@ all upstream's work.
   understand: how vectors cross into the extension.
 - [Semantic search with ext-infer](./recipes/semantic-search-with-ext-infer.md)
   — the full local RAG loop.
+
+## Writing about this
+
+- [ext-turbovec: A Vector Index Inside Your PHP Process](https://eric.mann.blog/ext-turbovec-vector-search-php/)
+- [Meaning as Geometry: What Embeddings Actually Are](https://eric.mann.blog/meaning-as-geometry-what-embeddings-actually-are/)
+- [Seeing in 1,024 Dimensions: How UMAP Makes Embeddings Visible](https://eric.mann.blog/seeing-in-1024-dimensions-umap/)
+- [From Keywords to Concepts: Semantic Search in Laravel with pgvector](https://eric.mann.blog/semantic-search-laravel-pgvector/)
+
+The stack's launch series ran Sept 22 – Oct 1, 2026; everything else
+is at [eric.mann.blog/writing](https://eric.mann.blog/writing/).

@@ -1,11 +1,16 @@
-# ext-turbovec — plan
+# ext-turbovec — design notes
 
-Living document. Each section answers "what's left, and why does it
-matter." Project status / surface description lives in
-[`README.md`](README.md); how-to-cut-a-release lives in
-[`RELEASE.md`](RELEASE.md).
+Design notes and decision history: why the surface looks the way it
+does, what was tried, and the constraints that bind future work. It is
+not a to-do list.
 
-## Status snapshot
+- Status and surface: [`README.md`](README.md)
+- What shipped, per release: [`CHANGELOG.md`](CHANGELOG.md)
+- Remaining work: [`future` issues](https://github.com/DisplaceTech/ext-turbovec/issues?q=is%3Aissue+is%3Aopen+label%3Afuture), one per idea, each carrying
+  the reasoning that used to live here
+- How to cut a release: [`RELEASE.md`](RELEASE.md)
+
+## Surface (as of 0.2.0)
 
 | Surface                                        | Status   |
 | ---------------------------------------------- | -------- |
@@ -15,66 +20,45 @@ matter." Project status / surface description lives in
 | `Vectors::pack` / `Vectors::unpack`            | shipped  |
 | `VectorException` hierarchy                    | shipped  |
 | Packed-vector contract (LE float32, validated) | shipped  |
-| PHPT suite (11 tests, no model downloads)      | shipped  |
-| CI matrix (8.3/8.4/8.5 × {macos-arm64, ubuntu, ubuntu-arm64}) | shipped |
+| PHPT suite (12 tests, no model downloads)      | shipped  |
+| CI matrix (8.3/8.4/8.5 × {macos-arm64, ubuntu}; weekly schedule) | shipped |
 | `composer.json` (PIE-compatible)               | shipped  |
 | Tag-triggered binary release workflow          | shipped  |
 | `RELEASE.md`                                   | shipped  |
 | `examples/` (2 examples + README)              | shipped  |
 | Documentation site (turbovec.displace.tech)    | shipped  |
-| ZTS-PHP support                                | enabled in composer.json, untested in CI |
+| ZTS-PHP support                                | PHPT suite on ZTS 8.4/8.5 in CI (0.2.0) |
 
 ## Releases
 
+Details per release live in [`CHANGELOG.md`](CHANGELOG.md); this table is the one-line history.
+
 | Version | Date | Notes |
 | ------- | ---- | ----- |
-| —       | —    | v0.1.0 pending |
+| v0.2.0  | unreleased | turbovec 1.1.2: index format v8 (0.1.x files must be rebuilt), `dim` ≤ 16384, ~half the memory, ~3× faster search, no OpenBLAS. |
+| v0.1.0  | 2026-06-11 | First release (turbovec 0.9.0, format v3). |
 
-## Up next
+## Remaining work
 
-### Batch search
+Tracked as [`future` issues](https://github.com/DisplaceTech/ext-turbovec/issues?q=is%3Aissue+is%3Aopen+label%3Afuture); the design reasoning moved into each
+issue's body:
 
-Upstream `search()` is natively multi-query — the binding currently
-restricts to one query per call. A `searchBatch(string $queries, int $k):
-array<SearchResult>` (or a `BatchResult` with per-query slicing) amortizes
-the FFI crossing and lets the kernel exploit its 4-query SIMD path.
-Decide result shape before implementing.
+- [#2](https://github.com/DisplaceTech/ext-turbovec/issues/2) Batch search (multiple queries per call)
+- [#3](https://github.com/DisplaceTech/ext-turbovec/issues/3) mmap-backed `load()`
+- [#4](https://github.com/DisplaceTech/ext-turbovec/issues/4) Range / threshold search
+- [#5](https://github.com/DisplaceTech/ext-turbovec/issues/5) Zero-copy packed decode (measure first)
 
-### Packed handoff from ext-infer
+Done since the last revision of this file: the packed handoff from
+ext-infer (`Embedding::packed()`, used by the examples and recipes) and
+a ZTS CI leg.
 
-`examples/semantic-search.php` currently round-trips
-`Embedding::vector()` (PHP float array) through `Vectors::pack()`.
-ext-infer's next release will emit packed float32 directly; when it
-does, update the example and the semantic-search recipe to the zero-copy
-idiom and document the pairing as the canonical local RAG stack.
+## Decisions
 
-### mmap-backed load
-
-`load()` reads the whole file into memory. For multi-GB indexes in FPM
-fleets, an mmap-backed variant would let workers share page cache.
-Upstream work required first — track upstream's roadmap before
-designing the PHP surface.
-
-### Range / threshold search
-
-"All matches with score >= t" complements top-k for dedup and
-clustering use cases. Needs upstream support; the PHP surface would be
-`searchRange(string $query, float $threshold): SearchResult`.
-
-### ZTS exercise
-
-Same posture as ext-infer: the code is thread-safe by design (upstream
-`search()` is `&self` with `OnceLock` caches; PHP objects are
-request-local), `support-zts` is declared in composer.json, but no ZTS
-runner exists in CI yet. Add a ZTS leg when the tooling allows.
-
-### Zero-copy packed decode
-
-`packed.rs` copies every payload through `f32::from_le_bytes` (see the
-module comment for why that's the right default). If profiling ever
-shows the copy mattering against the encode it feeds, add a
-`binary_slice`-based aligned fast path behind the same validation.
-Measure first; the copy is O(input) against O(input × dim) work.
+| Date | Decision | Why |
+| ---- | -------- | --- |
+| 2026-10-29 | Bump turbovec 0.9.0 → 1.1.2 and ship as 0.2.0 despite the format break. | 0.1.x's v3 files can't be read or converted by any turbovec ≥ 1.0 (the v5 rotation change re-encodes every byte), so staying on 0.9 meant freezing on an abandoned format. 1.x halves resident memory, is ~3× faster, and drops OpenBLAS. `load()` names the old release and says to rebuild. |
+| 2026-10-29 | Accept upstream's `MAX_DIM` = 16384 rather than patching around it. | It bounds allocations an untrusted file header can request; every common embedding size is ≤ 4096. Documented as breaking in 0.2.0. |
+| 2026-06-11 | Restrict `bitWidth` to {2, 4}. | The configurations the SIMD kernels are optimized for and the only ones this extension commits to supporting. |
 
 ## Deliberately out of scope
 
@@ -89,31 +73,29 @@ Measure first; the copy is O(input) against O(input × dim) work.
 
 ### Upstream `turbovec` is pinned exactly
 
-`=0.9.0`. The `.tv`/`.tvim` on-disk formats are versioned upstream
-(format v3 as of 0.6.x; v2 loads transparently; v1 is refused with a
-rebuild hint). Bumping the pin is a deliberate event: check the
-upstream changelog for format changes, run the full PHPT suite, and
-call out index compatibility in the release notes.
+`=1.1.2`. The `.tv`/`.tvim` formats are versioned upstream: 1.1.2
+writes v8 and reads v7/v8; `turbovec::convert` can move v5–v8 files
+between versions, but nothing reads v1–v4. Bumping the pin is a
+deliberate event: read upstream's changelog for format changes, write
+an index of every type with the old build and `load()` it with the new
+one (the 0.2.0 check is in the PR), run the full PHPT suite, and state
+index compatibility first in the release notes. ext-template's upstream
+watcher opens an issue when crates.io moves ahead.
 
-### OpenBLAS on Linux
+### OpenBLAS (history)
 
-Upstream's build script links `-lopenblas` on Linux (macOS uses the
-always-present Accelerate framework). Consequences:
-
-- Building needs `libopenblas-dev` (CI installs it on every Linux leg).
-- Shipped Linux binaries carry a `DT_NEEDED` on `libopenblas.so.0` —
-  users need the `libopenblas0` package at runtime. Documented in the
-  README compatibility section; keep it in the release-notes template.
-- A static-BLAS or pure-Rust fallback build would remove the runtime
-  dependency — investigate upstream appetite before doing anything
-  downstream.
+turbovec 0.9 linked `-lopenblas` on Linux through `ndarray`'s `blas`
+feature, so 0.1.x Linux binaries carried a `DT_NEEDED` on
+`libopenblas.so.0`. turbovec 1.x dropped `ndarray`, BLAS and `faer`;
+since 0.2.0 the binaries link only the C runtime and the build no
+longer needs `libopenblas-dev`.
 
 ### Rust 1.89 floor
 
 Upstream's AVX-512BW kernel uses `#[target_feature(enable =
-"avx512bw", ...)]`, stabilized in Rust 1.89 — that's why this repo's
-toolchain pin is newer than ext-infer's 1.88. Keep the pin and
-`rust-version` in lockstep.
+"avx512bw", ...)]`, stabilized in Rust 1.89 — that's why the
+platform-wide toolchain floor (ext-template's `versions.conf`) is 1.89.
+turbovec 1.1.2 still declares `rust-version = "1.89"`.
 
 ### `target-cpu=x86-64-v3` vs `RUSTFLAGS`
 
@@ -127,9 +109,11 @@ either file, keep them coherent.
 
 ### `ext-php-rs` is pre-1.0
 
-Pinned at 0.15.13, same as ext-infer. The `#[php(implements(...))]`
-linkage `SearchResult` relies on (and the class-typed `getIterator()`
-return arginfo) should be re-verified with the 010 PHPT on any bump.
+Pinned through ext-template's `versions.conf` (`=0.16.3`), same as
+every extension. The `#[php(implements(...))]` linkage `SearchResult`
+relies on (and the class-typed `getIterator()` return arginfo) should be
+re-verified with the 010 PHPT on any bump, along with a Reflection dump
+diff.
 
 ### `spl_ce_RuntimeException`
 
