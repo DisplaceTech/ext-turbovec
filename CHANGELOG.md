@@ -5,7 +5,7 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/)
 (pre-1.0: breaking changes bump the minor). Dates are tag dates.
 
-## [0.2.0] - Unreleased
+## [0.2.0] - 2026-10-29
 
 Upstream `turbovec` 0.9.0 → 1.1.2: half the memory, roughly 3× faster
 search, no OpenBLAS — and **index files must be rebuilt**.
