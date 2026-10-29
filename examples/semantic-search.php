@@ -18,7 +18,6 @@
 declare(strict_types=1);
 
 use Displace\Vector\IdMapIndex;
-use Displace\Vector\Vectors;
 
 if (!extension_loaded('turbovec')) {
     fwrite(STDERR, "ext-turbovec is not loaded.\n");
@@ -66,9 +65,8 @@ $documents = [
 // 2. Embed with ext-infer, index with ext-turbovec
 // ---------------------------------------------------------------------
 //
-// Embedding::vector() returns a PHP float array; Vectors::pack() turns it
-// into the packed float32 string the index consumes. (A future ext-infer
-// release will hand back the packed string directly — see the roadmap.)
+// Embedding::packed() (ext-infer 0.2+) returns the packed float32 string
+// the index consumes, so the vector never becomes a PHP float array.
 $model = \Displace\Infer\Model::load($modelPath, ['embedding' => true]);
 
 $dim   = null;
@@ -77,7 +75,7 @@ foreach ($documents as $id => $text) {
     $embedding = $model->embed($text)->normalize();
     $dim     ??= $embedding->dimensions();
     $index   ??= new IdMapIndex(dim: $dim, bitWidth: 4);
-    $index->addWithIds(Vectors::pack($embedding->vector()), [$id]);
+    $index->addWithIds($embedding->packed(), [$id]);
 }
 printf("indexed %d documents at dim %d\n\n", $index->count(), $dim);
 
@@ -92,7 +90,7 @@ $queries = [
 
 foreach ($queries as $q) {
     $queryVec = $model->embed($q)->normalize();
-    $result   = $index->search(Vectors::pack($queryVec->vector()), k: 3);
+    $result   = $index->search($queryVec->packed(), k: 3);
 
     echo "query: {$q}\n";
     foreach ($result as $row) {

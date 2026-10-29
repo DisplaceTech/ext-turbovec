@@ -4,7 +4,7 @@
 //
 // Regenerate from the registered classes after building:
 //
-//     make stubs   # wraps `cargo php stubs --stubs stubs/vector.stubs.php`
+//     make stubs   # writes target/vector.stubs.php — diff it against this file
 
 namespace Displace\Vector;
 
@@ -166,7 +166,7 @@ class TurboQuantIndex
 {
     /**
      * @param int $dim      Vector dimensionality. Must be a positive
-     *                      multiple of 8, at most 65536 (every common
+     *                      multiple of 8, at most 16384 (every common
      *                      embedding size qualifies).
      * @param int $bitWidth Bits per coordinate after quantization: 2 or 4.
      *
@@ -221,7 +221,7 @@ class IdMapIndex
 {
     /**
      * @param int $dim      Vector dimensionality. Must be a positive
-     *                      multiple of 8, at most 65536.
+     *                      multiple of 8, at most 16384.
      * @param int $bitWidth Bits per coordinate after quantization: 2 or 4.
      *
      * @throws \Displace\Vector\InvalidArgumentException On a bad dim or bitWidth.

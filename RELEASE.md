@@ -71,13 +71,14 @@ make test
 # composer.json shape
 composer validate composer.json
 
-# Optional: regenerate IDE stubs and diff against the committed copy
-make stubs && git diff stubs/vector.stubs.php
+# Signature check: generate stubs from the build and diff against the
+# curated copy (Linux: add STUBS_PRELOAD=/path/to/libphp8.x.so — see the
+# Makefile). Any signature drift is a stop-and-decide.
+make stubs && diff -u stubs/vector.stubs.php target/vector.stubs.php
 ```
 
 PHPTs must pass on macOS arm64 locally before any release tag — that's
-the platform CI exercises least interactively. Linux builders need
-`libopenblas-dev` installed first.
+the platform CI exercises least interactively.
 
 ## Cutting the tag
 
@@ -114,7 +115,7 @@ platforms (macos-arm64, linux-x86_64, linux-arm64):
 
 Each job:
 
-1. Installs system deps (`libclang-dev`; Linux adds `libopenblas-dev`).
+1. Installs system deps (`libclang-dev`).
 2. Installs the matrix PHP via `shivammathur/setup-php@v2`.
 3. Runs `cargo build --release` (x86_64 legs re-assert
    `-C target-cpu=x86-64-v3` inside `RUSTFLAGS`; see PLAN.md).
@@ -145,11 +146,11 @@ After CI is green:
    - …
 
    ## Upstream
-   - turbovec pinned at =X.Y.Z; index files from <range> load unchanged.
+   - turbovec pinned at =X.Y.Z; index files from <range> load unchanged
+     (or: rebuild required — say so first, in bold).
 
    ## Known caveats
-   - Linux binaries require the libopenblas0 package at runtime.
-   - ZTS support compiles but is not exercised in CI.
+   - Prebuilt binaries are NTS; ZTS installs build from source.
    ```
 4. Verify all 9 tarballs + 9 sidecars (18 files total) are attached.
 5. Hit *Publish release*.
@@ -189,9 +190,9 @@ php -m | grep turbovec
 php -r 'var_dump(class_exists("Displace\\Vector\\TurboQuantIndex"));'
 ```
 
-On Linux, if the module fails to load with an `libopenblas.so.0`
-error, that's the runtime dependency: `apt install libopenblas0` (or
-the distro equivalent) and retry.
+If the module fails to load with a `libopenblas.so.0` error, an
+ext-turbovec 0.1.x binary is still installed (0.2.0+ has no OpenBLAS
+dependency).
 
 ## Hotfix / patch releases
 
@@ -217,17 +218,14 @@ If a release is broken:
 
 ## Caveats / known gaps
 
-- **Linux OpenBLAS** — release binaries dynamically link
-  `libopenblas.so.0`. This is inherited from upstream's BLAS usage;
-  PLAN.md tracks the static-linking investigation. Keep the caveat in
-  every release's notes until resolved.
 - **ZTS PHP** is enabled in `composer.json` and thread-safe by design
-  (upstream search is `&self`; PHP objects are request-local), but not
-  exercised in CI. Treat as "should work, please report bugs".
+  (upstream search is `&self`; PHP objects are request-local). CI runs
+  the PHPT suite on ZTS PHP 8.4/8.5 (Linux); release binaries are NTS
+  only, so ZTS users build from source via PIE.
 - **Windows** is intentionally excluded via `os-families-exclude`.
 - **musl Linux** is not in the release matrix. `.cargo/config.toml`
   carries the `crt-static` opt-out so an Alpine source build should
-  succeed (with `openblas-dev` installed), but we don't ship binaries.
+  succeed, but we don't ship binaries.
 - **macOS deployment target** — if wide-distribution tarballs ever
   fail to load on older macOS, pin `MACOSX_DEPLOYMENT_TARGET` in
   `release.yml` (see ext-infer's PLAN.md note).
@@ -237,6 +235,5 @@ If a release is broken:
 | Symptom                                              | First thing to check |
 | ---------------------------------------------------- | -------------------- |
 | Release workflow doesn't fire                        | Did you push the tag? `git push --tags`. |
-| Linux leg fails at link with `-lopenblas`            | The `libopenblas-dev` install step — package name drift on new runner images. |
 | PIE can't find a matching binary                     | Verify the tarball filename — PIE matches verbatim on arch/os/libc/tsmode. |
-| `php -m` doesn't show `turbovec` after `pie install` | Re-run PIE with `-v`; on Linux check `ldd turbovec.so` for missing `libopenblas.so.0`. |
+| `php -m` doesn't show `turbovec` after `pie install` | Re-run PIE with `-v`; check `ldd turbovec.so` for a missing library. |

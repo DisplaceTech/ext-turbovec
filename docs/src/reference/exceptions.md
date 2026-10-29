@@ -18,7 +18,7 @@ whichever precision you need.
 A malformed argument that isn't a payload-length problem:
 
 - `bitWidth` other than 2 or 4; `dim` not a positive multiple of 8 or
-  over 65536
+  over 16384
 - `k < 1`
 - NaN/Inf/`|x| >= 1e16` coordinates in a vector or query (these would
   silently corrupt the index, so they're rejected up front)

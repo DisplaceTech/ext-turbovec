@@ -44,7 +44,7 @@ identity, filtering by id, or deletion.
 ## Constructor parameters (both classes)
 
 - **`dim`** — vector dimensionality. Must be a positive multiple of 8,
-  at most 65536. Every common embedding size qualifies (384, 512, 768,
+  at most 16384. Every common embedding size qualifies (384, 512, 768,
   1024, 1536, 3072, 4096). Locked at construction; payloads that
   disagree throw.
 - **`bitWidth`** — bits per coordinate after quantization, `2` or `4`

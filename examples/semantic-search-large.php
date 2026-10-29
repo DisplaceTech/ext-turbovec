@@ -26,7 +26,6 @@ declare(strict_types=1);
 
 use Displace\Infer\Model;
 use Displace\Vector\IdMapIndex;
-use Displace\Vector\Vectors;
 
 if (!extension_loaded('turbovec') || !extension_loaded('infer')) {
     fwrite(STDERR, "requires both ext-turbovec and ext-infer loaded.\n");
@@ -155,7 +154,7 @@ $t0     = hrtime(true);
 foreach ($docs as $id => $text) {
     $e     = $model->embed($text)->normalize();
     $dim ??= $e->dimensions();
-    $packed[$id] = Vectors::pack($e->vector());
+    $packed[$id] = $e->packed();
 }
 $tEmbed = hrtime(true) - $t0;
 
@@ -208,7 +207,7 @@ $queries = [
     'writing fast concurrent software',
 ];
 $queryVecs = array_map(
-    fn (string $q): string => Vectors::pack($model->embed($q)->normalize()->vector()),
+    fn (string $q): string => $model->embed($q)->normalize()->packed(),
     $queries,
 );
 

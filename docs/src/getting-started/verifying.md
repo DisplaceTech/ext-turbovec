@@ -17,9 +17,9 @@ echo $r->ids()[0] === 0 ? "ext-turbovec OK\n" : "unexpected result\n";
 
 ## Troubleshooting
 
-**`libopenblas.so.0: cannot open shared object file` (Linux)** — install
-the OpenBLAS runtime: `sudo apt install libopenblas0` (Debian/Ubuntu) or
-your distro's equivalent.
+**`libopenblas.so.0: cannot open shared object file` (Linux)** — you are
+loading an ext-turbovec 0.1.x binary. Upgrade (0.2.0+ has no OpenBLAS
+dependency) or install the runtime: `sudo apt install libopenblas0`.
 
 **`undefined symbol` errors at load** — the binary was built for a
 different PHP minor. PIE matches automatically; for source builds,
