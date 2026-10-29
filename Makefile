@@ -24,7 +24,7 @@ help:
 	@echo "  make uninstall   cargo php remove"
 	@echo "  make clean       cargo clean"
 	@echo ""
-	@echo "Build deps (Linux): libclang-dev libopenblas-dev"
+	@echo "Build deps (Linux): libclang-dev"
 	@echo "Variables: FEATURES=...  -> passed through to cargo --features"
 
 build:
