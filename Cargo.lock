@@ -477,7 +477,7 @@ checksum = "efa29f09b08e644d5dc1e76a318f758afc9dccbe92ccf84b4778e0433a78eecc"
 
 [[package]]
 name = "ext-turbovec"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ext-php-rs",
  "thiserror 2.0.21",
