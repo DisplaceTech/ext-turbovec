@@ -85,8 +85,9 @@ $batch  = $packedA . $packedB . $packedC;     // batches are plain concatenation
 `strlen($payload)` must be a whole multiple of `4 * $dim`; anything else
 throws `DimensionMismatchException`. This is deliberately the *only* input
 path — packed strings cross the FFI boundary as a single memcpy-sized blob
-instead of millions of PHP zvals, and it's the format ext-infer's
-`EmbeddingModel` will emit natively in its next release. For array-minded
+instead of millions of PHP zvals, and it's the format ext-infer emits
+natively: `$model->embed($text)->packed()` (ext-infer 0.2+) goes straight
+into `add()`/`search()` without touching a PHP array. For array-minded
 code, `Vectors::pack(array $floats): string` and
 `Vectors::unpack(string $packed, int $dim): array` are the on-ramp.
 
