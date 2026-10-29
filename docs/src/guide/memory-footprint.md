@@ -30,6 +30,11 @@ The math for the first row:
 At `bitWidth: 2` the codes halve again (100K × 1024 ≈ 26 MB) — worth
 evaluating when a downstream reranker can absorb a small recall dip.
 
+Measured (ext-turbovec 0.2.0, release build, Linux x86_64/AVX2, PHP
+8.3): a 100K × 1024 4-bit `IdMapIndex` adds **52 MB** of resident
+memory after `load()` plus a first search, from a 53.5 MB file.
+(ext-turbovec 0.1.x measured 112 MB for the same index.)
+
 ## Transient costs to know about
 
 - **First search** after `add()`/`load()` builds the SIMD-blocked

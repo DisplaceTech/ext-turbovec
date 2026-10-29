@@ -12,24 +12,15 @@ PIE picks the pre-built binary for your PHP minor (8.3/8.4/8.5),
 platform (macOS arm64, Linux x86_64, Linux arm64), and thread-safety
 mode, drops it into your extension directory, and enables it.
 
-### Linux: OpenBLAS
-
-The index engine links OpenBLAS on Linux. If the extension fails to
-load with a `libopenblas.so.0: cannot open shared object file` error:
-
-```sh
-sudo apt install libopenblas0        # Debian/Ubuntu
-sudo dnf install openblas            # Fedora/RHEL
-```
-
-macOS needs nothing — the Accelerate framework ships with the OS.
+No runtime libraries are needed on any platform. (ext-turbovec 0.1.x
+linked OpenBLAS on Linux; since 0.2.0 the upstream engine is pure Rust
+and the `libopenblas0` package can be removed.)
 
 ## From source
 
 Requirements: Rust 1.89+ (`rustup` will pick up the repo's toolchain
 pin), PHP 8.3+ with development headers (`php-dev` /
-`php-config` on PATH), libclang (`libclang-dev`), and on Linux
-`libopenblas-dev`.
+`php-config` on PATH), and libclang (`libclang-dev`).
 
 ```sh
 git clone https://github.com/DisplaceTech/ext-turbovec

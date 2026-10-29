@@ -103,8 +103,10 @@ vector. For 100,000 documents at dim 1024 with 4-bit quantization:
 ```
 
 `bitWidth: 2` halves the codes again when recall requirements allow.
-`dim` must be a positive multiple of 8 (every common embedding size
-qualifies: 384, 512, 768, 1024, 1536, 3072, 4096, …).
+`dim` must be a positive multiple of 8, at most 16384 (every common
+embedding size qualifies: 384, 512, 768, 1024, 1536, 3072, 4096, …).
+Measured: that 100K × 1024 index adds 52 MB of resident memory after
+`load()` and a first search.
 
 ## API surface (v0.1)
 
@@ -130,13 +132,15 @@ Exceptions: `VectorException` (extends `\RuntimeException`) with
 
 CPU-only by design. On x86_64 the AVX-512BW kernel engages automatically
 when the CPU has it, with an AVX2 fallback (Haswell 2013+) below it.
-**Linux note:** the upstream engine links OpenBLAS — binaries need the
-`libopenblas0` package at runtime (`libopenblas-dev` to build from
-source). macOS uses the built-in Accelerate framework; nothing to install.
+No runtime libraries to install on any platform: since 0.2.0 the
+upstream engine is pure Rust (0.1.x needed `libopenblas0` on Linux).
 
-This release pins upstream [`turbovec` 0.9.0](https://crates.io/crates/turbovec).
+This release pins upstream [`turbovec` 1.1.2](https://crates.io/crates/turbovec).
 The pin is exact because the on-disk index formats must stay stable;
 upstream bumps are deliberate, documented events (see RELEASE.md).
+**Upgrading from 0.1.x? Rebuild your index files** — 0.1.x files use a
+format 0.2 can't read or convert; see
+[Persistence](https://turbovec.displace.tech/guide/persistence.html).
 
 ## Roadmap
 

@@ -10,7 +10,7 @@ Positional ids: the Nth vector added is id N. No removal.
 
 | Method | Notes |
 | ------ | ----- |
-| `__construct(int $dim, int $bitWidth = 4)` | `dim`: positive multiple of 8, ≤ 65536. `bitWidth`: 2 or 4. |
+| `__construct(int $dim, int $bitWidth = 4)` | `dim`: positive multiple of 8, ≤ 16384. `bitWidth`: 2 or 4. |
 | `add(string $vectors): void` | Packed batch; `strlen % (4*dim) === 0`. Empty string is a no-op. |
 | `count(): int` | Vectors currently in the index. |
 | `search(string $query, int $k = 10): SearchResult` | Exactly one packed vector; `k >= 1`. Returns `min(k, count)` rows, best-first. |

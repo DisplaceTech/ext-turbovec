@@ -23,7 +23,7 @@ ext-php-rs = "=0.16.3"
 # Pinned exactly: the on-disk index formats (.tv / .tvim) must stay stable
 # across builds of the same ext-turbovec release. Bump deliberately and
 # document format compatibility in the release notes (see README).
-turbovec   = "=0.9.0"
+turbovec   = "=1.1.2"
 thiserror  = "=2.0.21"
 
 [profile.release]

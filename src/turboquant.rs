@@ -40,7 +40,7 @@ use crate::result::SearchResult;
 /// We restrict bitWidth to {2, 4} even though upstream also implements
 /// 3-bit: 2 and 4 are the configurations the SIMD kernels are optimized
 /// for and the only ones this extension commits to supporting. Upstream's
-/// own dim rules (positive multiple of 8, <= 65536) surface through the
+/// own dim rules (positive multiple of 8, <= 16384) surface through the
 /// `ConstructError` mapping when `new()` runs.
 pub(crate) fn validate_construct_args(
     dim: i64,
@@ -65,6 +65,38 @@ pub(crate) fn validate_construct_args(
 /// ("No such file or directory") don't name the file on their own.
 pub(crate) fn io_error(path: &str, err: std::io::Error) -> VectorError {
     VectorError::IndexIO(format!("{path}: {err}"))
+}
+
+/// Map a `load()` failure, naming the ext-turbovec release behind a
+/// pre-v5 file so the fix is obvious from PHP.
+///
+/// ext-turbovec 0.1.x pinned turbovec 0.9, which wrote format v3. turbovec
+/// 1.x reads only v7/v8, and nothing can decode v1-v4 (the v5 rotation
+/// change altered every encoded byte), so the only route is a rebuild.
+/// The header is read only after upstream has already rejected the file
+/// as `InvalidData`; a successful load does no extra I/O.
+pub(crate) fn load_error(path: &str, err: std::io::Error) -> VectorError {
+    if err.kind() == std::io::ErrorKind::InvalidData {
+        if let Some(version) = legacy_format_version(path) {
+            return VectorError::IndexIO(format!(
+                "{path}: this index uses turbovec format v{version}, written by \
+                 ext-turbovec 0.1.x; ext-turbovec 0.2+ reads only formats v7 and v8 \
+                 and older files cannot be converted. Rebuild it: add the source \
+                 vectors to a new index and write() it again."
+            ));
+        }
+    }
+    io_error(path, err)
+}
+
+/// The format version byte of a `.tv`/`.tvim` file older than v5, if
+/// `path` is one.
+fn legacy_format_version(path: &str) -> Option<u8> {
+    use std::io::Read;
+    let mut head = [0u8; 5];
+    std::fs::File::open(path).ok()?.read_exact(&mut head).ok()?;
+    let magic_ok = &head[..4] == b"TVPI" || &head[..4] == b"TVIM";
+    (magic_ok && (1..=4).contains(&head[4])).then_some(head[4])
 }
 
 /// PHP-visible handle to an upstream [`turbovec::TurboQuantIndex`].
@@ -93,7 +125,7 @@ impl TurboQuantIndex {
     /// `bitWidth` bits per coordinate.
     ///
     /// `dim` must be a positive multiple of 8 (every common embedding
-    /// dimensionality qualifies) and at most 65536. `bitWidth` must be
+    /// dimensionality qualifies) and at most 16384. `bitWidth` must be
     /// 2 or 4.
     #[php(defaults(bitWidth = 4))]
     pub fn __construct(dim: i64, bitWidth: i64) -> PhpResult<Self> {
@@ -141,7 +173,7 @@ impl TurboQuantIndex {
 
     /// Load an index previously persisted with [`TurboQuantIndex::write`].
     pub fn load(path: String) -> PhpResult<Self> {
-        let inner = turbovec::TurboQuantIndex::load(&path).map_err(|e| io_error(&path, e))?;
+        let inner = turbovec::TurboQuantIndex::load(&path).map_err(|e| load_error(&path, e))?;
         Ok(Self { inner })
     }
 }

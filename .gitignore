@@ -16,6 +16,9 @@ tests/phpt/*.mem
 # Index files written by tests/examples
 *.tv
 *.tvim
+# ...except committed format fixtures (written by a released build)
+!/tests/fixtures/*.tv
+!/tests/fixtures/*.tvim
 
 # Editor/IDE noise
 .idea/

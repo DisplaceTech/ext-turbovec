@@ -9,8 +9,6 @@
   Homebrew PHP includes it.
 - **libclang** — for ext-php-rs's bindgen. Debian/Ubuntu:
   `apt install libclang-dev`; macOS: ships with Xcode CLT.
-- **OpenBLAS (Linux only)** — `apt install libopenblas-dev`. macOS uses
-  the built-in Accelerate framework.
 
 ## Build
 

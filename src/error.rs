@@ -27,7 +27,7 @@ use ext_php_rs::ffi::zend_class_entry;
 use ext_php_rs::prelude::*;
 use ext_php_rs::zend::ClassEntry;
 use thiserror::Error;
-use turbovec::{AddError, ConstructError};
+use turbovec::{AddError, ConstructError, SearchError};
 
 /// Internal error type for fallible operations inside the extension.
 ///
@@ -105,6 +105,22 @@ impl From<AddError> for VectorError {
             // Everything else (id count mismatch, duplicate id, non-finite
             // values) is a recoverable bad argument. AddError is
             // #[non_exhaustive] upstream, hence the catch-all arm.
+            _ => VectorError::InvalidArgument(err.to_string()),
+        }
+    }
+}
+
+impl From<SearchError> for VectorError {
+    fn from(err: SearchError) -> Self {
+        // turbovec >= 1.0 reports these as errors where 0.9 panicked. The
+        // bindings pre-validate the allowlist (empty / unknown id) and the
+        // query shape with their own messages first, so in practice only a
+        // condition upstream adds later reaches this. SearchError is
+        // #[non_exhaustive] upstream, hence the catch-all arm.
+        match err {
+            SearchError::QueryBufferNotMultipleOfDim { .. } => {
+                VectorError::DimensionMismatch(err.to_string())
+            }
             _ => VectorError::InvalidArgument(err.to_string()),
         }
     }

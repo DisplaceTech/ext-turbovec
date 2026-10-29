@@ -14,8 +14,8 @@ at the repo root. The short version:
    (PHP 8.3/8.4/8.5 × macos-arm64/linux-x86_64/linux-arm64) build
    release binaries and attach PIE-named tarballs + sha256 sidecars to
    a **draft** GitHub Release.
-5. Review the draft, write notes (remember the Linux `libopenblas0`
-   caveat and the upstream-pin/format statement), publish.
+5. Review the draft, write notes (remember the
+   upstream-pin/format statement), publish.
 
 Two release-specific rules:
 

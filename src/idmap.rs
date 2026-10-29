@@ -12,9 +12,11 @@
 //! binding accepts `0..=PHP_INT_MAX` — every id that goes in fits back
 //! into a PHP int on the way out.
 //!
-//! Upstream's `search_with_allowlist` *panics* on an empty allowlist or an
-//! id that is not in the index, so both are validated here first (each
-//! `contains()` check is O(1)) and surface as `InvalidArgumentException`.
+//! An empty allowlist or an id that is not in the index is validated here
+//! first (each `contains()` check is O(1)) and surfaces as
+//! `InvalidArgumentException` with this binding's own message. (turbovec
+//! 0.9 panicked on both; 1.x returns a `SearchError`, mapped in error.rs
+//! as a backstop.)
 //
 // camelCase parameter idents (`bitWidth`) are intentional — see the module
 // note in turboquant.rs. The proc-macro expansion moves the idents past any
@@ -27,7 +29,7 @@ use ext_php_rs::prelude::*;
 use crate::error::VectorError;
 use crate::packed;
 use crate::result::SearchResult;
-use crate::turboquant::{io_error, validate_construct_args, validate_k};
+use crate::turboquant::{io_error, load_error, validate_construct_args, validate_k};
 
 /// PHP-visible handle to an upstream [`turbovec::IdMapIndex`].
 #[php_class]
@@ -107,7 +109,8 @@ impl IdMapIndex {
 
         let (scores, ids) = self
             .inner
-            .search_with_allowlist(&floats, k, allowlist.as_deref());
+            .search_with_allowlist(&floats, k, allowlist.as_deref())
+            .map_err(VectorError::from)?;
 
         // Every id in the index passed through validate_ids() on the way
         // in, so it fits i64; try_from is a crash-loud guard, not a path.
@@ -143,7 +146,7 @@ impl IdMapIndex {
 
     /// Load an index previously persisted with [`IdMapIndex::write`].
     pub fn load(path: String) -> PhpResult<Self> {
-        let inner = turbovec::IdMapIndex::load(&path).map_err(|e| io_error(&path, e))?;
+        let inner = turbovec::IdMapIndex::load(&path).map_err(|e| load_error(&path, e))?;
         Ok(Self { inner })
     }
 }
