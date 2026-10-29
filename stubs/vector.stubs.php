@@ -14,6 +14,8 @@ namespace Displace\Vector;
  */
 class VectorException extends \RuntimeException
 {
+    /** Not constructible from PHP — instances come from the extension. */
+    public function __construct() {}
 }
 
 /**
@@ -23,6 +25,8 @@ class VectorException extends \RuntimeException
  */
 class InvalidArgumentException extends \Displace\Vector\VectorException
 {
+    /** Not constructible from PHP — instances come from the extension. */
+    public function __construct() {}
 }
 
 /**
@@ -33,6 +37,8 @@ class InvalidArgumentException extends \Displace\Vector\VectorException
  */
 class DimensionMismatchException extends \Displace\Vector\InvalidArgumentException
 {
+    /** Not constructible from PHP — instances come from the extension. */
+    public function __construct() {}
 }
 
 /**
@@ -41,6 +47,8 @@ class DimensionMismatchException extends \Displace\Vector\InvalidArgumentExcepti
  */
 class IndexIOException extends \Displace\Vector\VectorException
 {
+    /** Not constructible from PHP — instances come from the extension. */
+    public function __construct() {}
 }
 
 /**
@@ -51,7 +59,7 @@ class IndexIOException extends \Displace\Vector\VectorException
  * array-minded callers; on the hot path, prefer producing packed strings
  * directly.
  */
-final class Vectors
+class Vectors
 {
     /** @throws \Displace\Vector\VectorException Always — static helper class. */
     public function __construct() {}
@@ -92,7 +100,7 @@ final class Vectors
  *
  * @implements \Iterator<int, array{id: int, score: float}>
  */
-final class SearchResultIterator implements \Iterator
+class SearchResultIterator implements \Iterator
 {
     /** @throws \Displace\Vector\VectorException Always. */
     public function __construct() {}
@@ -124,7 +132,7 @@ final class SearchResultIterator implements \Iterator
  *
  * @implements \IteratorAggregate<int, array{id: int, score: float}>
  */
-final class SearchResult implements \Countable, \IteratorAggregate
+class SearchResult implements \Countable, \IteratorAggregate
 {
     /** @throws \Displace\Vector\VectorException Always. */
     public function __construct() {}
